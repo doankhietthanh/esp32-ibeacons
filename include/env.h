@@ -1,5 +1,5 @@
 // Define Station ID
-#define STATION_ID "648113fc-c3e9-4bff-a455-39abbe522480"
+#define STATION_ID "3c94c153-37a4-47bf-9bf6-1c1954476dae"
 
 // Insert Firebase project API Key
 #define API_KEY "AIzaSyA3LB2w4QwzrD7GAc7Lhi1-HUtDSgrW2u8"
