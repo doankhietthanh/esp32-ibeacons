@@ -1,7 +1,8 @@
 #include "main.h"
 #include "env.h"
 
-#define BLE_SCAN_TIME 5
+#define TIME_INTERVAL 1000
+#define BLE_SCAN_TIME 1
 #define LED_ACTIVE 12
 #define BTN_INTERRUPT_AP_MODE 23
 
@@ -53,15 +54,8 @@ void setup()
   pinMode(BTN_INTERRUPT_AP_MODE, INPUT_PULLUP);                                                // Configure the pin as an input with internal pull-up resistor
   attachInterrupt(digitalPinToInterrupt(BTN_INTERRUPT_AP_MODE), itrResetWifiSettings, RISING); // Configure the interrupt
 
-  // Check if the device is connected to Wi-Fi
-  if (WiFi.status() == WL_CONNECTED)
-  {
-    digitalWrite(LED_ACTIVE, HIGH);
-  }
-  else
-  {
-    blinkLED(LED_ACTIVE);
-  }
+  blinkLED(LED_ACTIVE, 10, 200);
+
   // Generate a unique SSID for the ESP32
   // Split STATION_ID by '-' and get the last element
   std::string WiFiSSID = "Station-" + std::string(STATION_ID).substr(std::string(STATION_ID).find_last_of("-") + 1);
@@ -70,6 +64,12 @@ void setup()
     Serial.println("Failed to connect and hit timeout");
     esp_restart();
     delay(1000);
+  }
+
+  // Check if the device is connected to Wi-Fi
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    digitalWrite(LED_ACTIVE, HIGH);
   }
 
   Serial.println("Connected to Wi-Fi!");
@@ -105,7 +105,7 @@ void loop()
     resetWifiFlag = false;
   }
 
-  if (Firebase.ready() && (millis() - sendDataPrevMillis > 15000 || sendDataPrevMillis == 0))
+  if (Firebase.ready() && (millis() - sendDataPrevMillis > TIME_INTERVAL || sendDataPrevMillis == 0))
   {
     sendDataPrevMillis = millis();
 
@@ -161,11 +161,12 @@ void loop()
     Serial.print("Devices found: ");
     Serial.println(foundDevices.getCount());
     Serial.println("Scan done!");
+    // Define a list temp to store tag founded
+    std::vector<String> devicesAdded;
     // Add devices to Firebase
     for (int i = 0; i < foundDevices.getCount(); i++)
     {
       BLEAdvertisedDevice advertisedDevice = foundDevices.getDevice(i);
-      Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
       String deviceAddress = advertisedDevice.getAddress().toString().c_str();
       String tagId = tagsDoc[deviceAddress];
 
@@ -180,7 +181,23 @@ void loop()
       json->set("txPower", deviceTxPower);
       json->set("rssi", deviceRSSI);
       Firebase.RTDB.setJSON(&fbdo, "rooms/" + std::string(roomId.c_str()) + "/tags/" + std::string(tagId.c_str()) + "/stations/" + STATION_ID, json);
+      Serial.printf("Advertised Device: %s \n", advertisedDevice.toString().c_str());
       Serial.println("Add device to Firebase successfully!");
+      //
+      devicesAdded.push_back(deviceAddress);
+    }
+    // Remove device in tagDocs but not added to firebase
+    for (JsonPair kv : tagsDoc.as<JsonObject>())
+    {
+      const char *macAdress = kv.key().c_str();
+      String tagId = tagsDoc[macAdress];
+      if (std::find(devicesAdded.begin(), devicesAdded.end(), macAdress) == devicesAdded.end())
+      {
+        std::string keys = "rooms/" + std::string(roomId.c_str()) + "/tags/" + std::string(tagId.c_str()) + "/stations/" + STATION_ID;
+        Serial.println(keys.c_str());
+        Firebase.RTDB.deleteNode(&fbdo, keys);
+        Serial.println("Remove device from Firebase successfully!");
+      }
     }
     // Delete devices from BLE scan results
     pBLEScan->clearResults();
